@@ -2,11 +2,11 @@
 
 A Claude Code skill that turns **whatever model you're currently running** into an **orchestrator**. Instead of doing every part of an ambitious project itself, the orchestrator decomposes the work, triages each task by difficulty, and dispatches tasks to subagents on the **cheapest model that can do them well** — keeping only the hardest architecture and synthesis work for itself.
 
-> The principle: **no overkill.** Don't burn a frontier model on renaming a button. Don't send a subsystem redesign to a small model. Match the model to the difficulty.
+> The principle: **no overkill, in either direction.** Don't burn a frontier model on renaming a button. Don't send a subsystem redesign to a small model. And don't spawn an agent at all for a task smaller than its own brief.
 
 ## Why
 
-Ambitious, end-to-end projects contain a mix of trivial, moderate, and genuinely hard work. Running all of it on a top-tier model is slow and expensive; running all of it on a cheap model is unreliable. This skill routes each task to the right tier and parallelizes the independent ones.
+Ambitious, end-to-end projects contain a mix of trivial, moderate, and genuinely hard work. Running all of it on a top-tier model is slow and expensive; running all of it on a cheap model is unreliable. This skill routes each task to the right tier, parallelizes the independent ones, and verifies every wave so mistakes from cheap models get caught and escalated — not built upon.
 
 ## The capability ladder
 
@@ -21,15 +21,16 @@ The deciding factor between tiers is **correctness risk, not task size**: a one-
 
 ## How it works
 
-1. **Understands** the project — explores the codebase, asks sharp questions if scope is fuzzy.
-2. **Decomposes** the work into a task graph with dependencies.
-3. **Asks you two things** at runtime:
-   - **Routing mode** — `Standard` · `Cost-aggressive` · `Quality-first`, chosen per project.
-   - **Deploy mode** — `Checkpoint` (approve assignments, pause at each wave) vs. `Full A–Z` (autonomous, report at the end).
-4. **Routes** each task to a model tier per the chosen mode.
-5. **Dispatches in parallel** where safe — independent tasks batched together, dependent tasks in waves, never two agents editing the same file at once.
-6. **Integrates itself** — the orchestrator wires the parts together and owns the final review.
-7. **Verifies** (build / test / lint) and **reports** the task→model breakdown so the efficiency win is visible.
+1. **Scouts cheap** — a Haiku Explore agent maps the codebase; the expensive orchestrator plans from the map instead of exploring itself.
+2. **Decomposes** the work into a task graph with dependencies and per-task file ownership. Tasks smaller than their own brief are done inline — no agent overhead.
+3. **Asks you two things** (or takes them as arguments):
+   - **Routing mode** — `standard` · `cost-aggressive` · `quality-first`.
+   - **Deploy mode** — `checkpoint` (approve the plan, pause at each wave) · `full` (autonomous A–Z).
+4. **Dispatches in parallel** — independent tasks batched concurrently (capped ~5), dependent tasks in waves, worktree isolation when write-tasks overlap, background execution for long runners.
+5. **Briefs that work** — every subagent gets pre-packaged context (relevant code pasted in, not "go explore"), exact file ownership, and a self-verification command. Template in [references/brief-template.md](references/brief-template.md).
+6. **Verifies every wave with an escalation ladder** — failure → one retry with a sharper brief → escalate one tier up → orchestrator does it itself. Later waves never build on unverified work.
+7. **Integrates itself** — the orchestrator wires the parts together and owns the final review.
+8. **Reports** the task→model breakdown, escalations included, so the efficiency win is visible.
 
 The mechanism is real: each subagent runs on a per-agent `model` override (`haiku` / `sonnet` / `opus` / `fable`).
 
@@ -49,8 +50,21 @@ Restart your Claude Code session, then invoke with:
 
 ## Usage
 
-Run `/model-supermaxxing` on any ambitious, multi-part project. Pick your routing and deploy modes when prompted, and let the orchestrator fan the work out across models.
+```
+/model-supermaxxing                          # asks for routing + deploy mode
+/model-supermaxxing cost-aggressive full     # skips the questions, runs A–Z
+/model-supermaxxing quality-first checkpoint # bias up, approve each wave
+```
+
+Run it on any ambitious, multi-part project and let the orchestrator fan the work out across models.
+
+## Repo layout
+
+- [SKILL.md](SKILL.md) — the orchestrator playbook (always loaded when invoked)
+- [references/brief-template.md](references/brief-template.md) — the subagent brief template, with per-tier calibration
+- [references/routing-examples.md](references/routing-examples.md) — triage calibration table and edge rules
+- [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
-**Author:** Stel · **Version:** 1.0.0
+**Author:** Stel · **Version:** 1.1.0
