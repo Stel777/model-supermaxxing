@@ -23,10 +23,14 @@ must change, STOP and report that instead of editing it.>
 ## Constraints
 - <Hard requirements: API shape, performance, security, style, no new deps, etc.>
 - Do not refactor or "improve" code outside the stated goal.
+- Before creating or writing anything, check whether it already exists — a prior run may have started this. Resume or extend; don't blindly redo or overwrite.
 
 ## Verify before reporting done
 Run: `<exact build/test/lint command>`
 If it fails, fix and re-run. Do not report success with a failing check.
+
+## (Research / data-collection tasks only) Journal as you go
+Stream findings to `.supermax/<task-id>.result.md` as you gather them — not just in your final report. If your session ends early, whatever you've written there survives and the orchestrator resumes from it. Skip this if your work produces files directly — those are already your checkpoint.
 
 ## Deliverable
 Report back: <e.g. "files changed with a one-line summary each, the verification

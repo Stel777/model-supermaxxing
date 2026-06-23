@@ -4,7 +4,7 @@ description: Turns the currently-running model into an orchestrator that decompo
 user-invocable: true
 argument-hint: "[standard|cost-aggressive|quality-first] [checkpoint|full]"
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   author: "Stel"
 ---
 
@@ -31,13 +31,24 @@ The deciding factor between tiers is **correctness risk, not task size**. When t
 
 The skill accepts up to two args: a **routing mode** (`standard` | `cost-aggressive` | `quality-first`) and a **deploy mode** (`checkpoint` | `full`). If both are given (e.g. `/model-supermaxxing cost-aggressive full`), skip the questions in step 3 entirely. If only one is given, ask only for the missing one.
 
+## Durability — survive a session limit
+
+A long run can outlive a single session. Persist state to a `.supermax/` dir in the project root (add it to `.gitignore`) so a dead agent — or a dead **orchestrator** — resumes instead of restarting:
+
+- **`.supermax/plan.md`** — you own this. The task graph + each task's status (`pending`/`running`/`done`/`failed`) + which wave is live. `TodoWrite` lives only in context and dies with your session; this file is its durable twin. Write it when the plan is set, update it at every wave boundary, and read it first if you ever resume cold. The orchestrator dying loses the *whole graph* — this is the highest-value save, not the per-agent ones.
+- **`.supermax/<task-id>.result.md`** — only for **research / synthesis / data-collection agents**, whose output never touches disk otherwise. They stream findings here as they go. File-writing and trivial agents skip it — their edits on disk already *are* their checkpoint.
+
+This is automatic — applied by the same triage you use for model tier, **not a user question**. In `full` mode it's the safety net for autonomous runs; in `checkpoint` mode you already pause at waves, so keep it light.
+
 ## Workflow
 
 ### 1. Scout — don't explore with expensive tokens
 If there's a codebase, spawn **one Explore agent on `haiku`** to map it: structure, stack, conventions, key files relevant to the request. You plan from its report. Only read files yourself when a decision genuinely hinges on details the scout can't be trusted with. (Skip the scout for greenfield or tiny projects.) If the request itself is ambiguous, ask sharp clarifying questions first — a bad task graph wastes the most money.
 
 ### 2. Decompose into a task graph
-Break the work into concrete, self-contained tasks. For each: what it produces, **which files it owns**, what it depends on. Track with `TodoWrite`.
+Break the work into concrete, self-contained tasks. For each: what it produces, **which files it owns**, what it depends on. Track with `TodoWrite`, and mirror the graph to `.supermax/plan.md` so it survives a session limit.
+
+**Size to fit one session.** Session-limit deaths are mostly a decomposition failure, not a save problem — the cheapest fix is to never let a task run that long. Size each task to finish comfortably inside one agent session; if it plausibly won't, split it into a wave of smaller tasks. Right-sizing *prevents* loss; the journal only *mitigates* it.
 
 **Inline threshold:** any task whose brief would be longer than the task itself (one-line fixes, tiny renames, a config flag) — just do it yourself, inline. Agent spawning has overhead; below the threshold, dispatching *is* the overkill.
 
@@ -54,6 +65,7 @@ Apply the routing mode to the graph. Present a table — `Task | Model | Files o
 - Dependent tasks run in **waves**: finish, verify, integrate, then launch the next wave.
 - Two write-tasks must never share a file. If overlap is unavoidable, give those agents `isolation: "worktree"` and merge yourself, or serialize them.
 - Use `run_in_background` for long-running agents so you keep working.
+- **Resumable by design.** Every brief tells the agent to *check what already exists before it builds* — so a retry or a resumed agent skips finished work instead of redoing or clobbering it. Costs ~nothing and protects file-writing tasks without any journal.
 - **Briefs are everything.** Subagents start cold. Build each brief from `references/brief-template.md`: pre-package the context (paste relevant excerpts, signatures, conventions — don't make a cheap model re-explore), state exact files owned, constraints, the deliverable, and the **verification command the agent must run before reporting done**. A Haiku agent with the code in front of it ≈ a Sonnet agent that has to find it.
 
 ### 6. Verify each wave — escalation ladder
@@ -64,11 +76,13 @@ Check every agent's output as its wave completes (run the build/tests yourself i
 
 Never build a later wave on top of unverified work. This ladder is what makes aggressive down-routing safe.
 
+**Wrong vs. interrupted are different failures.** The ladder above is for *wrong* work — restart it cold. If an agent instead died mid-task (session limit, timeout), don't restart from scratch: hand the retry its `.supermax/` journal + partial files and the task's slice of `plan.md`, and tell it to *continue from there*. Update `plan.md` as each task settles. (This resume path is the whole point of the journals — without it you'd be writing files nothing reads.)
+
 ### 7. Integrate & final review
 You do the integration — wiring parts together, resolving conflicts, coherence. Run the full build/test/lint. Then a final pass: yourself, or one fresh-eyes Opus/Fable reviewer agent on the assembled result. Fix what it finds.
 
 ### 8. Report
-Summarize: what was built, the task→model breakdown (who did what, including escalations), verification results, follow-ups. Make the efficiency win visible.
+Summarize: what was built, the task→model breakdown (who did what, including escalations), verification results, follow-ups. Make the efficiency win visible. Mark `.supermax/plan.md` complete — it's the resume point if anything reopens.
 
 ## Rules of thumb
 - Correctness risk, not size, decides the tier.
@@ -77,3 +91,5 @@ Summarize: what was built, the task→model breakdown (who did what, including e
 - Cheaper models need explicit, spelled-out briefs; capable models can take open-ended problems.
 - Never two agents writing the same file outside worktrees.
 - You stay the integrator: agents produce parts, you make them a whole.
+- Size tasks to fit one session; a right-sized task can't hit the limit that loses it.
+- Persist the plan and research output to `.supermax/` so a dead session resumes instead of restarting — but only journal where the loss would actually hurt (big/long/research work), never trivial tasks.
